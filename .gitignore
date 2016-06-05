@@ -2,9 +2,3 @@
 elm-stuff/
 # elm-repl generated files
 repl-temp-*
-
-#Emacs stuff
-*~
-#*#
-
-clean.sh

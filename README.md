@@ -1,1 +1,1 @@
-#Coreography Client
+#Choreography Client

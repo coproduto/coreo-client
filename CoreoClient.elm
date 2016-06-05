@@ -7,10 +7,15 @@ For usage details, check main.js.
 @docs main 
 -}
 
-import VoteList
-import NewWordList
+import CoreoClient.VoteList as VoteList
+import CoreoClient.NewWordList as NewWordList
+
 import Html as H exposing (Html)
 import Html.App as App
+
+--url for the words API
+url : String
+url = "http://localhost:4000/api/v1/words/"
 
 {-| main: Start the client.
 -}
@@ -33,19 +38,9 @@ type Msg
     = VoteMsg VoteList.Msg
     | NewWordMsg NewWordList.Msg
 
-
-options : List String
-options = 
-    [ "Forte"
-    , "Suave"
-    , "Rápido"
-    , "Lento"
-    ]
-
-
 init : (Model, Cmd Msg)
 init = 
-  let (newVoteList, voteListCmd) = VoteList.init options
+  let (newVoteList, voteListCmd) = VoteList.init url
 
       (newWordList, wordListCmd) = NewWordList.init
 
@@ -82,6 +77,3 @@ view model =
 subs : Model -> Sub Msg
 subs model =
     Sub.none
-
-
-

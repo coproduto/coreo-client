@@ -1,4 +1,4 @@
-module NewWordList exposing (Model, Msg, update, view, init)
+module CoreoClient.NewWordList exposing (Model, Msg, update, view, init)
 {-| Module allowing users to vote for a new word to be added 
 to the voting list. Functions quite similarly to the voting
 list itself.
