@@ -25,20 +25,21 @@ import WebSocket
 
 import Result exposing (Result)
 import Json.Decode as Decode exposing (Decoder,(:=))
-import Json.Encode
+import Json.Encode as Json
 
-import Phoenix.Channel.Update as ChannelUpdate
-import Phoenix.Channel.Model as ChannelModel 
-import Phoenix.Channel.Helpers exposing (assignResponseType)
+import Phoenix.Socket
+import Phoenix.Channel
+import Phoenix.Push
 
 import Debug
 
 {-| Underlying data for a VoteList-}
 type alias Model = 
-  ChannelModel.Model
     { votes : List Votes
     , votedForOption : Maybe Int
     , url : String
+    , socket : Phoenix.Socket.Socket Msg
+    , socketUrl : String
     }
 
 {-| Type for messages generated from a voteList.
@@ -52,9 +53,8 @@ type Msg = VoteForOption Int
          | IncrementSucceed Votes
          | DecrementFail Http.Error
          | DecrementSucceed Votes
-         | ChannelUpdate ChannelUpdate.Msg
-         | ChannelStr String
-         | ChannelConnect String
+         | PhoenixMsg (Phoenix.Socket.Msg Msg)
+         | WordUpdate Json.Value
          | NoOp
 
 type alias Votes =
@@ -68,22 +68,29 @@ the possible voting options as a parameter.
 -}
 init : String -> String -> (Model, Cmd Msg)
 init url socketUrl = 
-  let initModel = 
+  let 
+      initSocket = Phoenix.Socket.init socketUrl
+        |> Phoenix.Socket.withDebug
+        |> Phoenix.Socket.on "update:word" "updates:lobby" WordUpdate
+
+      channel = Phoenix.Channel.init "updates:lobby"
+              |> Phoenix.Channel.withPayload (Json.string "")
+
+      (socket, phxCmd) = Phoenix.Socket.join channel initSocket
+
+      initModel = 
         { votes = []
         , votedForOption = Nothing
         , url = url
+        , socket = socket
         , socketUrl = socketUrl
-        , connected = False
-        , refNumber = 0
-        , socketEvents = []
         }
 
       initCmds =
         Cmd.batch
           [ Task.perform UpdateListFail UpdateListSucceed 
               (Http.get decodeVoteList url)
-          , Task.perform (\_ -> NoOp) ChannelConnect
-              (Task.succeed "updates:lobby")
+          , Cmd.map PhoenixMsg phxCmd
           ]
   in
   ( initModel 
@@ -152,32 +159,19 @@ update message model =
        , Cmd.none
       )
 
-    ChannelUpdate msg ->
-      let (newModel, updateCmds) = ChannelUpdate.update msg model
+    PhoenixMsg msg ->
+      let
+        (phxSocket, phxCmd) = Phoenix.Socket.update msg model.socket
       in
-      ( Debug.log  ("got msg " ++ (toString msg) ++ " from channel")
-        newModel
-      , Cmd.map ChannelUpdate updateCmds
-      )
+        ( { model | socket = phxSocket }
+        , Cmd.map PhoenixMsg phxCmd
+        )
 
-    ChannelStr msg ->
-      ( Debug.log ("Got msg " ++ msg ++ " from channel")
+    WordUpdate json ->
+      ( Debug.log ("Got msg " ++ (toString json))
         model
       , Cmd.none
       )
-
-    ChannelConnect topic ->
-      let jsonToSend = 
-            { payload = Json.Encode.string ""
-            , topic = topic
-            , event = "phx_join"
-            , ref = model.refNumber
-            }
-          
-          (newModel, cmd) = 
-            update (ChannelUpdate <| ChannelUpdate.SendMessage jsonToSend) model
-      in
-        (newModel, cmd)
 
     NoOp ->
       (model, Cmd.none)
@@ -193,7 +187,7 @@ view model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-  WebSocket.listen model.socketUrl {-(ChannelUpdate << assignResponseType)-} ChannelStr
+  Phoenix.Socket.listen model.socket PhoenixMsg
       
 --helper functions
 voteList : List Votes -> Html Msg
