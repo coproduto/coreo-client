@@ -20,6 +20,9 @@ wordsUrl = "http://localhost:4000/api/v1/words/"
 newWordsUrl : String
 newWordsUrl = "http://localhost:4000/api/v1/new_words/"
 
+socketUrl : String
+socketUrl = "ws://localhost:4000/socket/websocket"
+
 {-| main: Start the client.
 -}
 main : Program Never
@@ -43,7 +46,7 @@ type Msg
 
 init : (Model, Cmd Msg)
 init = 
-  let (newVoteList, voteListCmd) = VoteList.init wordsUrl
+  let (newVoteList, voteListCmd) = VoteList.init wordsUrl socketUrl
 
       (newWordList, wordListCmd) = NewWordList.init newWordsUrl
 
