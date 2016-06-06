@@ -1,4 +1,4 @@
-module CoreoClient.VoteList exposing (Model, Msg, update, view, init)
+module CoreoClient.VoteList exposing (Model, Msg, update, view, init, subscriptions)
 {-| Module to generate a list of votes,
 consisting of each votable option together
 with the number of votes associated with it.
@@ -26,8 +26,7 @@ import Json.Decode as Decode exposing (Decoder,(:=))
 
 import Debug
 
-{-| Underlying data for a VoteList, containing a simple list of (String, Int) type
--}
+{-| Underlying data for a VoteList-}
 type alias Model = 
   { votes : List Votes
   , votedForOption : Maybe Int
@@ -73,9 +72,7 @@ update message model =
       case model.votedForOption of
         Just voted ->
           if voted == id then
-            ({ model | votes = dispatchAction decrement id model.votes 
-                     , votedForOption = Nothing
-             }
+            ( model
             , Task.perform DecrementFail DecrementSucceed 
                (Http.post decodeVoteResponse 
                   (model.url++"decrement/"++(toString id)) Http.empty)
@@ -84,9 +81,7 @@ update message model =
             (model, Cmd.none)
 
         Nothing ->
-          ({ model | votes = dispatchAction increment id model.votes 
-           , votedForOption = Just id
-           }
+          ( model 
           , Task.perform IncrementFail IncrementSucceed
               (Http.post decodeVoteResponse 
                  (model.url++"increment/"++(toString id)) Http.empty)
@@ -111,7 +106,9 @@ update message model =
 
     IncrementSucceed vote ->
       (Debug.log ("got vote " ++ (toString vote))
-       model
+         { model | votes = dispatchAction increment vote.id model.votes 
+         , votedForOption = Just vote.id
+         }
        , Cmd.none
       )
 
@@ -122,7 +119,9 @@ update message model =
 
     DecrementSucceed vote ->
       (Debug.log ("got vote " ++ (toString vote))
-       model
+         { model | votes = dispatchAction decrement vote.id model.votes 
+         , votedForOption = Nothing
+         }
        , Cmd.none
       )
 
@@ -133,7 +132,11 @@ button. -}
 view : Model -> Html Msg
 view model = 
   H.div []
-     [ voteList model.votes ]
+     [ voteList (List.sortBy (\a -> negate a.votes) model.votes) ]
+
+subscriptions : Model -> Sub Msg
+subscriptions _ =
+  Sub.none
       
 --helper functions
 voteList : List Votes -> Html Msg
@@ -165,7 +168,7 @@ increment x = x + 1
 decrement x = x - 1
 --
 
---decoder for (name, votes) pairs
+--decoders for JSON data
 
 decodeVoteList : Decoder (List Votes)
 decodeVoteList = 

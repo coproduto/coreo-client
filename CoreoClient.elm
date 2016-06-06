@@ -1,4 +1,4 @@
-module CoreoClient exposing (main)
+module CoreoClient exposing (..)
 {-| This is the top-level Elm module for a web client interface created for
 Brazilian dancer André Aguiar's multimedia choreography <name here>.
 
@@ -14,8 +14,11 @@ import Html as H exposing (Html)
 import Html.App as App
 
 --url for the words API
-url : String
-url = "http://localhost:4000/api/v1/words/"
+wordsUrl : String
+wordsUrl = "http://localhost:4000/api/v1/words/"
+
+newWordsUrl : String
+newWordsUrl = "http://localhost:4000/api/v1/new_words/"
 
 {-| main: Start the client.
 -}
@@ -25,7 +28,7 @@ main =
          { init = init
          , view = view
          , update = update
-         , subscriptions = subs
+         , subscriptions = subscriptions
          }
       
 type alias Model =
@@ -40,9 +43,9 @@ type Msg
 
 init : (Model, Cmd Msg)
 init = 
-  let (newVoteList, voteListCmd) = VoteList.init url
+  let (newVoteList, voteListCmd) = VoteList.init wordsUrl
 
-      (newWordList, wordListCmd) = NewWordList.init
+      (newWordList, wordListCmd) = NewWordList.init newWordsUrl
 
   in ( { voteList = newVoteList
        , newWordList = newWordList
@@ -74,6 +77,9 @@ view model =
          ]
 
 
-subs : Model -> Sub Msg
-subs model =
-    Sub.none
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.batch
+         [ Sub.map VoteMsg <| VoteList.subscriptions model.voteList
+         , Sub.map NewWordMsg <| NewWordList.subscriptions model.newWordList
+         ]

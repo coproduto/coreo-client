@@ -1,4 +1,4 @@
-module CoreoClient.NewWordList exposing (Model, Msg, update, view, init)
+module CoreoClient.NewWordList exposing (Model, Msg, update, view, init, subscriptions)
 {-| Module allowing users to vote for a new word to be added 
 to the voting list. Functions quite similarly to the voting
 list itself.
@@ -18,11 +18,21 @@ import Html as H exposing (Html)
 import Html.Attributes as Attr
 import Html.Events as Events
 
-{-| Underlying data for the NewWordList, containing a list of (String, Int, Bool) type
--} 
+import Http
+import Task exposing (Task)
+
+import Result exposing (Result)
+import Json.Decode as Decode exposing (Decoder,(:=))
+
+import Debug
+
+{- TODO: Connect to server -}
+
+{-| Underlying data for the NewWordList-} 
 type alias Model = 
-  { votes : List (String, Int, Bool) 
+  { votes : List NewWordVotes
   , fieldContent : String 
+  , url : String
   }
 
 {-| Type for messages generated from a voteList.
@@ -30,35 +40,112 @@ A message can either represent a vote for a given option
 or it can represent the creation of a new option.
 -}
 type Msg 
-  = VoteForOption String
+  = VoteForOption Int
   | CreateOption String
   | NewContent String
+  | UpdateListFail Http.Error
+  | UpdateListSucceed (List NewWordVotes)
+  | DecrementFail Http.Error
+  | DecrementSucceed NewWordVotes
+  | IncrementFail Http.Error
+  | IncrementSucceed NewWordVotes
+
+type alias NewWordVotes =
+  { id : Int
+  , name : String
+  , votes : Int
+  , voted : Bool
+  }
+
+type alias IncompleteVotes =
+  { id : Int
+  , name : String
+  , votes : Int
+  }
 
 {-| The newWordList is always initialized as empty.
 -}
-init : (Model, Cmd Msg)
-init = 
-  (Model [] "", Cmd.none)
+init : String -> (Model, Cmd Msg)
+init url = 
+  ( Model [] "" url
+  , Task.perform UpdateListFail UpdateListSucceed (Http.get (decodeNewWordList []) url)
+  )
 
 {-| We step the list whenever we get a new vote or a new option is created.
 -}
 update : Msg -> Model -> (Model, Cmd Msg)
 update message model =
   case message of
-    VoteForOption str ->
-      ({ model | votes = dispatch3 toggleAndModify str model.votes }, Cmd.none)
+    VoteForOption id ->
+      let vote = getTarget id model.votes
+      in case vote of
+           Just v ->
+             if v.voted then
+               ( model
+               , Task.perform DecrementFail DecrementSucceed
+                   (Http.post (decodeNewWordResponse model.votes)
+                      (model.url++"decrement/"++(toString id)) Http.empty)
+               )
+             else
+               ( model
+               , Task.perform IncrementFail IncrementSucceed
+                   (Http.post (decodeNewWordResponse model.votes)
+                      (model.url++"increment/"++(toString id)) Http.empty)
+               )
+
+           Nothing ->
+             (model, Cmd.none)
 
     CreateOption str ->
-      let options = List.map fst3 model.votes
+      let options = List.map .name model.votes
       in if str `List.member` options then
-           (model,Cmd.none)
+           ( model
+           , Cmd.none)
          else 
-           ({ model | votes = (str, 1, True) :: model.votes 
+           ({ model | votes = (NewWordVotes 99 str 1 True)  :: model.votes 
                     , fieldContent = ""
             }, Cmd.none)
 
     NewContent str ->
       ({ model | fieldContent = str }, Cmd.none)
+
+    UpdateListFail err ->
+      (Debug.log ("got err " ++ (toString err)) model
+      , Cmd.none
+      )
+
+    UpdateListSucceed nwList ->
+      (Debug.log ("got nwList " ++ (toString nwList))
+       { model | votes = nwList
+       }
+       , Cmd.none
+      )
+
+
+    IncrementFail err ->
+      (Debug.log ("got err " ++ (toString err)) model
+      , Cmd.none
+      )
+
+    IncrementSucceed vote ->
+      (Debug.log ("got vote " ++ (toString vote))
+         { model | votes = dispatchAction toggleAndModify vote.id model.votes 
+         }
+       , Cmd.none
+      )
+
+    DecrementFail err ->
+      (Debug.log ("got err " ++ (toString err)) model
+      , Cmd.none
+      )
+
+    DecrementSucceed vote ->
+      (Debug.log ("got vote " ++ (toString vote))
+         { model | votes = dispatchAction toggleAndModify vote.id model.votes 
+         }
+       , Cmd.none
+      )
+
 
 {-| Show the NewWordList -}
 view : Model -> Html Msg
@@ -71,44 +158,104 @@ view model =
        , Attr.value model.fieldContent
        ] []
    , H.button 
-      [ Events.onClick (CreateOption model.fieldContent) ]
+      [ Attr.type' "button"
+      , Events.onClick (CreateOption model.fieldContent) 
+      ]
       [ H.text "Confirmar opção" ]
    ]
 
+subscriptions : Model -> Sub Msg
+subscriptions _ =
+  Sub.none
+
 --helper functions
-fst3 : (a,b,c) -> a
-fst3 (x,_,_) = x
-
-dispatch3 : ((b,c) -> (b,c)) -> a -> List (a,b,c) -> List (a,b,c)
-dispatch3 action target list =
+dispatchAction : (NewWordVotes -> NewWordVotes) -> Int -> List NewWordVotes -> List NewWordVotes
+dispatchAction action target list =
   case list of
-    ((a,b,c) :: rest) ->
-      if a == target then 
-        let (x,y) = action (b,c)
-        in (a,x,y) :: rest
+    (vote :: rest) ->
+      if vote.id == target then 
+        (action vote) :: rest
 
-      else (a,b,c) :: (dispatch3 action target rest)
+      else vote :: (dispatchAction action target rest)
 
     [] -> []
 
-toggleAndModify : (Int,Bool) -> (Int,Bool)
-toggleAndModify (n, b) =
-  if b then (n+1, not b)
-  else (n-1, not b)
+getTarget : Int -> List NewWordVotes -> Maybe NewWordVotes
+getTarget target list =
+  case list of
+    (vote :: rest) ->
+      if vote.id == target then Just vote
+      else getTarget target rest
 
-voteList : List (String, Int, Bool) -> Html Msg
-voteList tripleList =
-  H.ul [] (List.map listElem tripleList)
+    [] -> Nothing
 
-listElem : (String, Int, Bool) -> Html Msg
-listElem (str, n, b) =
-  let voteText = if b then "+1"
+toggleAndModify : NewWordVotes -> NewWordVotes
+toggleAndModify vote =
+  if vote.voted then { vote | votes = vote.votes+1 
+                            , voted = not vote.voted 
+                     }
+
+  else { vote | votes = vote.votes-1
+              , voted = not vote.voted
+       }
+
+
+voteList : List NewWordVotes -> Html Msg
+voteList nvList =
+  H.ul [] (List.map listElem nvList)
+
+listElem : NewWordVotes -> Html Msg
+listElem vote =
+  let voteText = if vote.voted then "+1"
                  else "0"
   in 
     H.li []
-       [ H.text (str ++ ":" ++ voteText)
+       [ H.text (vote.name ++ ":" ++ voteText)
        , H.button
-          [ Events.onClick (VoteForOption str) ]
+          [ Events.onClick (VoteForOption vote.id) ]
           [ H.text "Vote" ]
        ]
 
+--decoders for JSON data
+hasVoted : List NewWordVotes -> Int -> Bool
+hasVoted list id =
+  case getTarget id list of
+    Just v -> v.voted
+    Nothing -> False
+
+completeNewList : List NewWordVotes -> List IncompleteVotes -> List NewWordVotes
+completeNewList oldList newList =
+  let voteList = List.map (.id >> (hasVoted oldList)) newList
+      pairList = List.map2 (,) newList voteList
+  in List.map (\ (elem, voted) -> 
+                 { id = elem.id
+                 , name = elem.name
+                 , votes = elem.votes
+                 , voted = voted
+                 })
+              pairList
+
+completeSingleVote : List NewWordVotes -> IncompleteVotes -> NewWordVotes
+completeSingleVote oldList incomplete =
+  NewWordVotes incomplete.id incomplete.name incomplete.votes 
+                 <| hasVoted oldList incomplete.id
+
+decodeIncompleteVoteList : Decoder (List IncompleteVotes)
+decodeIncompleteVoteList = 
+  let nwList = decodeIncompleteVote |> Decode.list
+  in ("data" := nwList)
+
+decodeIncompleteVote : Decoder IncompleteVotes
+decodeIncompleteVote =
+  Decode.object3 IncompleteVotes
+    ("id"    := Decode.int)
+    ("name"  := Decode.string)
+    ("votes" := Decode.int)
+
+decodeNewWordList : List NewWordVotes -> Decoder (List NewWordVotes)
+decodeNewWordList oldList =
+  Decode.object1 (completeNewList oldList) decodeIncompleteVoteList
+
+decodeNewWordResponse : List NewWordVotes -> Decoder NewWordVotes
+decodeNewWordResponse oldList =
+  Decode.object1 (completeSingleVote oldList) ("data" := decodeIncompleteVote)

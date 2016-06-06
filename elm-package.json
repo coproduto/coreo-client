@@ -4,12 +4,9 @@
     "repository": "https://github.com/pcstl/coreo-client.git",
     "license": "MIT",
     "source-directories": [
-        ".",
-	"./coreo-client"
+        "."
     ],
-    "exposed-modules": [
-        "CoreoClient"
-    ],
+    "exposed-modules": [],
     "dependencies": {
         "elm-lang/core": "4.0.0 <= v < 5.0.0",
         "elm-lang/html": "1.0.0 <= v < 2.0.0",
