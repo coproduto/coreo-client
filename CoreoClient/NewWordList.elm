@@ -1,4 +1,4 @@
-module CoreoClient.NewWordList exposing (Model, Msg, update, view, init, subscriptions)
+module CoreoClient.NewWordList exposing (Model, Msg(FetchList, NewWordUpdate), update, view, init, subscriptions)
 {-| Module allowing users to vote for a new word to be added 
 to the voting list. Functions quite similarly to the voting
 list itself.
@@ -9,7 +9,7 @@ list itself.
 
 @docs update
 
-@docs view
+n@docs view
 
 @docs init 
 -} 
@@ -23,6 +23,11 @@ import Task exposing (Task)
 
 import Result exposing (Result)
 import Json.Decode as Decode exposing (Decoder,(:=))
+import Json.Encode as Json
+
+import Phoenix.Socket
+import Phoenix.Channel
+import Phoenix.Push
 
 import Debug
 
@@ -33,6 +38,8 @@ type alias Model =
   { votes : List NewWordVotes
   , fieldContent : String 
   , url : String
+{-  , socket : Phoenix.Socket.Socket Msg
+  , socketUrl : String-}
   }
 
 {-| Type for messages generated from a voteList.
@@ -41,6 +48,7 @@ or it can represent the creation of a new option.
 -}
 type Msg 
   = VoteForOption Int
+  | FetchList
   | CreateOption String
   | NewContent String
   | UpdateListFail Http.Error
@@ -49,6 +57,9 @@ type Msg
   | DecrementSucceed NewWordVotes
   | IncrementFail Http.Error
   | IncrementSucceed NewWordVotes
+--  | PhoenixMsg (Phoenix.Socket.Msg Msg)
+  | NewWordUpdate Json.Value
+  | NoOp
 
 type alias NewWordVotes =
   { id : Int
@@ -66,9 +77,25 @@ type alias IncompleteVotes =
 {-| The newWordList is always initialized as empty.
 -}
 init : String -> (Model, Cmd Msg)
-init url = 
-  ( Model [] "" url
-  , Task.perform UpdateListFail UpdateListSucceed (Http.get (decodeNewWordList []) url)
+init url {-socketUrl-} = 
+  let
+{-    initSocket = Phoenix.Socket.init socketUrl
+      |> Phoenix.Socket.withDebug
+      |> Phoenix.Socket.on "update:new_word" "updates:lobby" NewWordUpdate-}
+
+    initModel =
+      { votes = []
+      , fieldContent = ""
+      , url = url
+{-      , socket = socket
+      , socketUrl = socketUrl-}
+      }
+
+    initCmds = 
+      Cmd.none
+  in
+  ( initModel
+  , initCmds -- 
   )
 
 {-| We step the list whenever we get a new vote or a new option is created.
@@ -76,6 +103,12 @@ init url =
 update : Msg -> Model -> (Model, Cmd Msg)
 update message model =
   case message of
+    FetchList ->
+      ( model
+      , Task.perform UpdateListFail UpdateListSucceed 
+          (Http.get (decodeNewWordList []) model.url)
+      )
+
     VoteForOption id ->
       let vote = getTarget id model.votes
       in case vote of
@@ -146,6 +179,33 @@ update message model =
        , Cmd.none
       )
 
+{-    PhoenixMsg msg ->
+      let
+        (phxSocket, phxCmd) = Phoenix.Socket.update msg model.socket
+      in
+        ( { model | socket = phxSocket }
+        , Cmd.map PhoenixMsg phxCmd
+        )-}
+
+    NewWordUpdate json ->
+      let data = Decode.decodeValue decodeIncompleteVote json
+      in case data of
+           Ok incVote ->
+             ( { model | votes = dispatchAction 
+                                   (always <| completeSingleVote model.votes incVote)
+                                   incVote.id
+                                   model.votes
+               }
+             , Cmd.none
+             )
+                   
+           Err err ->
+             ( (Debug.log("got err " ++ err) model)
+             , Cmd.none
+             )
+
+    NoOp ->
+      (model, Cmd.none)
 
 {-| Show the NewWordList -}
 view : Model -> Html Msg

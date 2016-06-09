@@ -10,6 +10,12 @@ For usage details, check main.js.
 import CoreoClient.VoteList as VoteList
 import CoreoClient.NewWordList as NewWordList
 
+import Phoenix.Socket
+import Phoenix.Channel
+import Phoenix.Push
+
+import Json.Encode as Json
+
 import Html as H exposing (Html)
 import Html.App as App
 
@@ -37,25 +43,44 @@ main =
 type alias Model =
     { voteList : VoteList.Model
     , newWordList : NewWordList.Model
+    , socket : Phoenix.Socket.Socket Msg
+    , socketUrl : String
     }
-
 
 type Msg 
     = VoteMsg VoteList.Msg
     | NewWordMsg NewWordList.Msg
+    | WordUpdate Json.Value
+    | NewWordUpdate Json.Value
+    | FetchLists Json.Value
+    | PhoenixMsg (Phoenix.Socket.Msg Msg)
 
 init : (Model, Cmd Msg)
 init = 
-  let (newVoteList, voteListCmd) = VoteList.init wordsUrl socketUrl
+  let (newVoteList, voteListCmd) = VoteList.init wordsUrl
 
       (newWordList, wordListCmd) = NewWordList.init newWordsUrl
 
+      initSocket = Phoenix.Socket.init socketUrl
+                 |> Phoenix.Socket.withDebug
+                 |> Phoenix.Socket.on "update:word" "updates:lobby" WordUpdate
+                 |> Phoenix.Socket.on "update:new_word" "updates:lobby" NewWordUpdate
+
+      channel = Phoenix.Channel.init "updates:lobby"
+              |> Phoenix.Channel.withPayload (Json.string "")
+              |> Phoenix.Channel.onJoin FetchLists
+
+      (socket, phxCmd) = Phoenix.Socket.join channel initSocket
+
   in ( { voteList = newVoteList
        , newWordList = newWordList
+       , socket = socket
+       , socketUrl = socketUrl
        }
      , Cmd.batch
          [ Cmd.map VoteMsg voteListCmd
          , Cmd.map NewWordMsg wordListCmd
+         , Cmd.map PhoenixMsg phxCmd
          ]
      )
 
@@ -71,6 +96,38 @@ update message model =
       let (newWordList, wordListCmd) = NewWordList.update msg model.newWordList
       in ({ model | newWordList = newWordList }, Cmd.map NewWordMsg wordListCmd)
 
+    FetchLists _ ->
+      let (newVoteList, voteListCmd) = VoteList.update VoteList.FetchList model.voteList
+          (newWordList, wordListCmd) = NewWordList.update NewWordList.FetchList model.newWordList
+      in 
+        ( { model | voteList = newVoteList
+                  , newWordList = newWordList 
+          }
+        , Cmd.batch
+            [ Cmd.map VoteMsg voteListCmd
+            , Cmd.map NewWordMsg wordListCmd
+            ]
+        )
+
+    WordUpdate json ->
+      let (newVoteList, voteListCmd) = VoteList.update (VoteList.WordUpdate json) model.voteList
+      in 
+        ( { model | voteList = newVoteList }, Cmd.map VoteMsg voteListCmd )
+
+    NewWordUpdate json ->
+      let (newWordList, wordListCmd) = NewWordList.update (NewWordList.NewWordUpdate json) model.newWordList
+      in
+        ( { model | newWordList = newWordList }, Cmd.map NewWordMsg wordListCmd )
+
+    PhoenixMsg msg ->
+      let
+        (phxSocket, phxCmd) = Phoenix.Socket.update msg model.socket
+      in
+        ( { model | socket = phxSocket }
+        , Cmd.map PhoenixMsg phxCmd
+        ) 
+      
+    
 
 view : Model -> Html Msg
 view model = 
@@ -85,4 +142,5 @@ subscriptions model =
     Sub.batch
          [ Sub.map VoteMsg <| VoteList.subscriptions model.voteList
          , Sub.map NewWordMsg <| NewWordList.subscriptions model.newWordList
+         , Phoenix.Socket.listen model.socket PhoenixMsg
          ]
