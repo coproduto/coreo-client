@@ -168,10 +168,16 @@ update message model =
         )
 
     WordUpdate json ->
-      ( Debug.log ("Got msg " ++ (toString json))
-        model
-      , Cmd.none
-      )
+      let data = Decode.decodeValue decodeVote
+      in case data of
+           Ok newVote ->
+             ( { model | votes = dispatchAction (always newVote.votes) vote.id model.votes }
+             , Cmd.none
+             )
+           Err err ->
+             ( (Debug.log ("got err " ++ err) model)
+             , Cmd.none
+             )
 
     NoOp ->
       (model, Cmd.none)
