@@ -19,6 +19,8 @@ import Json.Encode as Json
 import Html as H exposing (Html)
 import Html.App as App
 
+import Time
+
 --url for the words API
 wordsUrl : String
 wordsUrl = "http://localhost:4000/api/v1/words/"
@@ -45,6 +47,7 @@ type alias Model =
     , newWordList : NewWordList.Model
     , socket : Phoenix.Socket.Socket Msg
     , socketUrl : String
+    , updatesChannel : Phoenix.Channel.Channel Msg
     }
 
 type Msg 
@@ -54,6 +57,8 @@ type Msg
     | NewWordUpdate Json.Value
     | FetchLists Json.Value
     | PhoenixMsg (Phoenix.Socket.Msg Msg)
+    | RejoinChannel Json.Value
+    | Ping
 
 init : (Model, Cmd Msg)
 init = 
@@ -65,10 +70,12 @@ init =
                  |> Phoenix.Socket.withDebug
                  |> Phoenix.Socket.on "update:word" "updates:lobby" WordUpdate
                  |> Phoenix.Socket.on "update:new_word" "updates:lobby" NewWordUpdate
+                 |> Phoenix.Socket.on "update:invalidate_all" "updates:lobby" FetchLists
 
       channel = Phoenix.Channel.init "updates:lobby"
               |> Phoenix.Channel.withPayload (Json.string "")
               |> Phoenix.Channel.onJoin FetchLists
+              |> Phoenix.Channel.onClose RejoinChannel
 
       (socket, phxCmd) = Phoenix.Socket.join channel initSocket
 
@@ -76,6 +83,7 @@ init =
        , newWordList = newWordList
        , socket = socket
        , socketUrl = socketUrl
+       , updatesChannel = channel
        }
      , Cmd.batch
          [ Cmd.map VoteMsg voteListCmd
@@ -125,8 +133,21 @@ update message model =
       in
         ( { model | socket = phxSocket }
         , Cmd.map PhoenixMsg phxCmd
-        ) 
-      
+        )
+
+    RejoinChannel _ ->
+      let (socket, phxCmd) = Phoenix.Socket.join model.updatesChannel model.socket
+      in ( { model | socket = socket }
+         , Cmd.map PhoenixMsg phxCmd
+         )
+
+    Ping -> 
+      let ping = Phoenix.Push.init "ping" "updates:lobby"
+               |> Phoenix.Push.withPayload (Json.string "ping-response")
+          (socket, phxCmd) = Phoenix.Socket.push ping model.socket
+      in ( { model | socket = socket }
+         , Cmd.map PhoenixMsg phxCmd
+         )      
     
 
 view : Model -> Html Msg
@@ -143,4 +164,5 @@ subscriptions model =
          [ Sub.map VoteMsg <| VoteList.subscriptions model.voteList
          , Sub.map NewWordMsg <| NewWordList.subscriptions model.newWordList
          , Phoenix.Socket.listen model.socket PhoenixMsg
+         , Time.every (5 * Time.second) (\_ -> Ping)
          ]
