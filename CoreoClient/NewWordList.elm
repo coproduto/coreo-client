@@ -1,4 +1,4 @@
-module CoreoClient.NewWordList exposing (Model, Msg(FetchList, NewWordUpdate), update, view, init, subscriptions)
+module CoreoClient.NewWordList exposing (Model, Msg(FetchList, ResetFetchList, NewWordUpdate), update, view, init, subscriptions)
 {-| Module allowing users to vote for a new word to be added 
 to the voting list. Functions quite similarly to the voting
 list itself.
@@ -50,6 +50,7 @@ or it can represent the creation of a new option.
 type Msg 
   = VoteForOption Int
   | FetchList
+  | ResetFetchList
   | CreateOption String
   | CreateOptionFail Http.Error
   | CreateOptionSucceed NewWordVotes
@@ -107,6 +108,12 @@ update : Msg -> Model -> (Model, Cmd Msg)
 update message model =
   case message of
     FetchList ->
+      ( model
+      , Task.perform UpdateListFail UpdateListSucceed 
+          (Http.get (decodeNewWordList model.votes) model.url)
+      )
+
+    ResetFetchList ->
       ( model
       , Task.perform UpdateListFail UpdateListSucceed 
           (Http.get (decodeNewWordList []) model.url)
@@ -190,7 +197,6 @@ update message model =
        }
        , Cmd.none
       )
-
 
     IncrementFail err ->
       (Debug.log ("got err " ++ (toString err)) model

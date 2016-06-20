@@ -1,4 +1,4 @@
-module CoreoClient.VoteList exposing (Model, Msg(FetchList, WordUpdate), update, view, init, subscriptions)
+module CoreoClient.VoteList exposing (Model, Msg(FetchList, ResetFetchList, WordUpdate), update, view, init, subscriptions)
 {-| Module to generate a list of votes,
 consisting of each votable option together
 with the number of votes associated with it.
@@ -46,8 +46,10 @@ string identifying which option was voted for.
 -}
 type Msg = VoteForOption Int
          | FetchList
+         | ResetFetchList
          | UpdateListFail Http.Error
          | UpdateListSucceed (List Votes)
+         | UpdateListResetSucceed (List Votes)
          | IncrementFail Http.Error
          | IncrementSucceed Votes
          | DecrementFail Http.Error
@@ -92,6 +94,12 @@ update message model =
               (Http.get decodeVoteList model.url)
       )
 
+    ResetFetchList ->
+      ( model
+      , Task.perform UpdateListFail UpdateListResetSucceed 
+              (Http.get decodeVoteList model.url)
+      )
+
     VoteForOption id ->
       case model.votedForOption of
         Just voted ->
@@ -118,7 +126,15 @@ update message model =
 
     UpdateListSucceed vList ->
       (Debug.log ("got vList " ++ (toString vList))
+       { model | votes = vList 
+       }
+       , Cmd.none
+      )
+
+    UpdateListResetSucceed vList ->
+      (Debug.log ("got vList " ++ (toString vList))
        { model | votes = vList
+               , votedForOption = Nothing
        }
        , Cmd.none
       )
