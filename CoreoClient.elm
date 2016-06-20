@@ -56,6 +56,8 @@ type Msg
     | WordUpdate Json.Value
     | NewWordUpdate Json.Value
     | FetchLists Json.Value
+    | FetchNewWords Json.Value
+    | FetchWords Json.Value
     | PhoenixMsg (Phoenix.Socket.Msg Msg)
     | RejoinChannel Json.Value
     | Ping
@@ -71,6 +73,8 @@ init =
                  |> Phoenix.Socket.on "update:word" "updates:lobby" WordUpdate
                  |> Phoenix.Socket.on "update:new_word" "updates:lobby" NewWordUpdate
                  |> Phoenix.Socket.on "update:invalidate_all" "updates:lobby" FetchLists
+                 |> Phoenix.Socket.on "update:invalidate_words" "updates:lobby" FetchWords
+                 |> Phoenix.Socket.on "update:invalidate_new_words" "updates:lobby" FetchNewWords
 
       channel = Phoenix.Channel.init "updates:lobby"
               |> Phoenix.Channel.withPayload (Json.string "")
@@ -116,6 +120,26 @@ update message model =
             , Cmd.map NewWordMsg wordListCmd
             ]
         )
+
+    FetchNewWords _ ->
+      let (newWordList, wordListCmd) = NewWordList.update NewWordList.FetchList model.newWordList
+      in 
+        ( { model | newWordList = newWordList 
+          }
+        , Cmd.batch
+            [ Cmd.map NewWordMsg wordListCmd
+            ]
+        )
+
+    FetchWords _ ->
+      let (newVoteList, voteListCmd) = VoteList.update VoteList.FetchList model.voteList
+      in 
+        ( { model | voteList = newVoteList 
+          }
+        , Cmd.batch
+            [ Cmd.map VoteMsg voteListCmd
+            ]
+        ) 
 
     WordUpdate json ->
       let (newVoteList, voteListCmd) = VoteList.update (VoteList.WordUpdate json) model.voteList
