@@ -21,6 +21,7 @@ import Html.Events as Events
 import Http
 import Task exposing (Task)
 
+import String
 import Result exposing (Result)
 import Json.Decode as Decode exposing (Decoder,(:=))
 import Json.Encode as Json
@@ -50,6 +51,8 @@ type Msg
   = VoteForOption Int
   | FetchList
   | CreateOption String
+  | CreateOptionFail Http.Error
+  | CreateOptionSucceed NewWordVotes
   | NewContent String
   | UpdateListFail Http.Error
   | UpdateListSucceed (List NewWordVotes)
@@ -131,13 +134,47 @@ update message model =
 
     CreateOption str ->
       let options = List.map .name model.votes
-      in if str `List.member` options then
+
+          payload = Json.encode 1
+                     <| Json.object
+                          [ ("new_word"
+                            , Json.object
+                                 [ ("name",  (Json.string str))
+                                 , ("votes", (Json.int 0))
+                                 ]
+                            )
+                          ]
+      in if (str `List.member` options) || ((String.length str) == 0) then
            ( model
            , Cmd.none)
          else 
-           ({ model | votes = (NewWordVotes 99 str 1 True)  :: model.votes 
-                    , fieldContent = ""
-            }, Cmd.none)
+           let httpRequest = Http.send Http.defaultSettings
+                             { verb = "POST"
+                             , headers = [("Accept", "application/json")
+                                         ,("Content-Type", "application/json")
+                                         ]
+                             , url = model.url
+                             , body = Http.string payload
+                             }
+
+           in 
+             ( model
+             , Task.perform CreateOptionFail CreateOptionSucceed 
+                 (Http.fromJson (decodeNewWordResponse []) httpRequest)
+             )
+                                  
+
+    CreateOptionFail err ->
+      (Debug.log ("got err " ++ (toString err)) model
+      , Cmd.none
+      )
+
+    CreateOptionSucceed newOption ->
+      ({ model | votes = newOption :: model.votes
+               , fieldContent = ""
+       }
+      , Cmd.none
+      )
 
     NewContent str ->
       ({ model | fieldContent = str }, Cmd.none)

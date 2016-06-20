@@ -68,28 +68,14 @@ the possible voting options as a parameter.
 init : String -> (Model, Cmd Msg)
 init url {-socketUrl-} = 
   let 
-{-      initSocket = Phoenix.Socket.init socketUrl
-        |> Phoenix.Socket.withDebug
-        |> Phoenix.Socket.on "update:word" "updates:lobby" WordUpdate
-
-      channel = Phoenix.Channel.init "updates:lobby"
-              |> Phoenix.Channel.withPayload (Json.string "")
-              |> Phoenix.Channel.onJoin FetchList
-
-      (socket, phxCmd) = Phoenix.Socket.join channel initSocket-}
-
       initModel = 
         { votes = []
         , votedForOption = Nothing
         , url = url
-{-        , socket = socket
-        , socketUrl = socketUrl-}
         }
 
       initCmds =
-        Cmd.none{-batch
-          [ Cmd.map PhoenixMsg phxCmd
-          ]-}
+        Cmd.none
   in
   ( initModel 
   , initCmds
