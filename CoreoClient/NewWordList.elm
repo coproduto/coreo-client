@@ -305,18 +305,32 @@ toggleAndModify vote =
 
 voteList : List NewWordVotes -> Html Msg
 voteList nvList =
-  H.ul [] (List.map listElem nvList)
+  let list = List.map listElem nvList
+  in H.ul 
+       [ Attr.class "list-group vote-list" ]
+       list
 
 listElem : NewWordVotes -> Html Msg
 listElem vote =
   let voteText = if vote.voted then "+1"
                  else "0"
   in 
-    H.li []
+    H.li 
+       [ Attr.class "list-group-item clearfix vote-item" ]
        [ H.text (vote.name ++ ":" ++ voteText)
-       , H.button
-          [ Events.onClick (VoteForOption vote.id) ]
-          [ H.text "Vote" ]
+       , H.span
+          [ Attr.class "pull-right" ]
+          [ H.button
+              [ Attr.class "btn btn-primary"
+              , Attr.type' "button"
+              , Events.onClick (VoteForOption vote.id) 
+              ]
+              (if vote.voted then
+                 [ H.text "Desfazer voto" ]
+               else
+                 [ H.text "Vote" ]
+              )
+          ]
        ]
 
 --decoders for JSON data

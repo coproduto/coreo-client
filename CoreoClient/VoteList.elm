@@ -22,6 +22,8 @@ import Http
 import Task exposing (Task)
 
 import Result exposing (Result)
+import Dict exposing (Dict)
+import Maybe exposing (Maybe)
 import Json.Decode as Decode exposing (Decoder,(:=))
 import Json.Encode as Json
 
@@ -63,6 +65,30 @@ type alias Votes =
   , name: String
   , votes: Int 
   }
+
+specialWords : List String
+specialWords = 
+  [ "Forte"
+  , "Leve"
+  , "Lento"
+  , "Rápido"
+  , "Volta"
+  , "Pause"
+  , "Livre"
+  , "Contido"
+  ]
+
+wordImages : Dict String String
+wordImages = 
+  Dict.fromList
+    [ ("Forte", "/images/forte.png")
+    , ("Leve", "/images/leve.png")
+    , ("Rápido", "/images/rapido.png")
+    , ("Volta", "/images/volta.png")
+    , ("Pause", "/images/pause.png")
+    , ("Livre", "/images/livre.png")
+    , ("Contido", "/images/contido.png")
+    ]
 
 {-| Initialize the voteList. It takes a list of strings representing
 the possible voting options as a parameter. 
@@ -195,7 +221,7 @@ button. -}
 view : Model -> Html Msg
 view model = 
   H.div []
-     [ voteList (List.sortBy (\a -> negate a.votes) model.votes) ]
+     [ voteList model (List.sortBy (\a -> negate a.votes) model.votes) ]
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
@@ -203,20 +229,71 @@ subscriptions model =
     Sub.none
       
 --helper functions
-voteList : List Votes -> Html Msg
-voteList vList =
+voteList : Model -> List Votes -> Html Msg
+voteList model vList =
   let list =
-    List.map listElem vList
-  in H.ul [] list
+    List.map (listElem model) vList
+  in H.ul 
+       [ Attr.class "list-group vote-list" ] 
+       list
 
-listElem : Votes -> Html Msg
-listElem vote =
-  H.li []
-     [ H.text (vote.name ++ ":" ++ (toString vote.votes))
-     , H.button
-         [ Events.onClick (VoteForOption vote.id) ]
-         [ H.text "Vote" ] 
-     ]
+listElem : Model -> Votes -> Html Msg
+listElem model vote =
+  let hasVotedForThis = case model.votedForOption of
+                          Just id ->
+                            (id == vote.id)
+                          Nothing ->
+                            False
+
+      hasVoted = case model.votedForOption of
+                   Just _  -> True
+                   Nothing -> False
+
+      wordImg = Maybe.withDefault "" <| Dict.get vote.name wordImages
+
+  in if not <| vote.name `List.member` specialWords
+    then
+       H.li 
+          [ Attr.class "list-group-item clearfix vote-item" ]
+            [ H.text (vote.name ++ " : " ++ (toString vote.votes))
+            , H.span 
+                [ Attr.class "pull-right" ]
+                [ H.button
+                    [ (if (hasVotedForThis || (not hasVoted)) then
+                         Attr.class "btn btn-primary"
+                       else
+                         Attr.class "btn btn-primary disabled"
+                      )
+                    , Attr.type' "button"
+                    , Events.onClick (VoteForOption vote.id) 
+                    ]
+                    (if hasVotedForThis then
+                       [ H.text "Desfazer voto" ]
+                     else
+                       [ H.text "Vote" ]
+                    )
+                ]
+            ]
+    else
+      H.li
+         [ Attr.class "list-group-item vote-item" ]
+         [ H.button 
+             [ (if (hasVotedForThis || (not hasVoted)) then
+                  Attr.class "btn btn-primary-outline"
+                else
+                  Attr.class "btn btn-primary-outline disabled"
+               )
+             , Attr.type' "button"
+             , Events.onClick (VoteForOption vote.id) 
+             ]
+             [ H.img 
+                 [ Attr.src wordImg
+                 , Attr.alt vote.name
+                 ] []
+             ]
+         , H.text (" : " ++ (toString vote.votes))
+         ]
+
 
 dispatchAction : (Int -> Int) -> Int -> List Votes -> List Votes
 dispatchAction action target list =
