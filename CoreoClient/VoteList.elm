@@ -1,4 +1,4 @@
-module CoreoClient.VoteList exposing (Model, Msg(FetchList, ResetFetchList, WordUpdate), update, view, init, subscriptions)
+module CoreoClient.VoteList exposing (Model, Msg(FetchList, ResetFetchList, WordUpdate, Lock, Unlock), update, view, init, subscriptions)
 {-| Module to generate a list of votes,
 consisting of each votable option together
 with the number of votes associated with it.
@@ -38,6 +38,7 @@ type alias Model =
     { votes : List Votes
     , votedForOption : Maybe Int
     , url : String
+    , isLocked : Bool
 {-    , socket : Phoenix.Socket.Socket Msg
     , socketUrl : String-}
     }
@@ -57,6 +58,8 @@ type Msg = VoteForOption Int
          | DecrementFail Http.Error
          | DecrementSucceed Votes
 --         | PhoenixMsg (Phoenix.Socket.Msg Msg)
+         | Lock
+         | Unlock
          | WordUpdate Json.Value
          | NoOp
 
@@ -85,9 +88,10 @@ wordImages =
     , ("Leve", "/images/leve.png")
     , ("Rápido", "/images/rapido.png")
     , ("Volta", "/images/volta.png")
-    , ("Pause", "/images/pause.png")
-    , ("Livre", "/images/livre.png")
+    , ("Pausa", "/images/pause.png")
+    , ("Fluido", "/images/livre.png")
     , ("Contido", "/images/contido.png")
+    , ("Lento", "/images/lento.png")
     ]
 
 {-| Initialize the voteList. It takes a list of strings representing
@@ -100,6 +104,7 @@ init url {-socketUrl-} =
         { votes = []
         , votedForOption = Nothing
         , url = url
+        , isLocked = True
         }
 
       initCmds =
@@ -121,7 +126,7 @@ update message model =
       )
 
     ResetFetchList ->
-      ( model
+      ( { model | votedForOption = Nothing }
       , Task.perform UpdateListFail UpdateListResetSucceed 
               (Http.get decodeVoteList model.url)
       )
@@ -199,6 +204,12 @@ update message model =
         , Cmd.map PhoenixMsg phxCmd
         )-}
 
+    Lock ->
+      ( { model | isLocked = True }, Cmd.none )
+
+    Unlock ->
+      ( Debug.log "vlist model" { model | isLocked = False }, Cmd.none )
+
     WordUpdate json ->
       let data = Decode.decodeValue decodeVote json
       in case data of
@@ -221,7 +232,7 @@ button. -}
 view : Model -> Html Msg
 view model = 
   H.div []
-     [ voteList model (List.sortBy (\a -> negate a.votes) model.votes) ]
+     [ voteList model (List.sortWith listOrder model.votes) ]
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
@@ -234,7 +245,7 @@ voteList model vList =
   let list =
     List.map (listElem model) vList
   in H.ul 
-       [ Attr.class "list-group vote-list" ] 
+       [ Attr.class "list-group row vote-list" ] 
        list
 
 listElem : Model -> Votes -> Html Msg
@@ -254,15 +265,18 @@ listElem model vote =
   in if not <| vote.name `List.member` specialWords
     then
        H.li 
-          [ Attr.class "list-group-item clearfix vote-item" ]
-            [ H.text (vote.name ++ " : " ++ (toString vote.votes))
+          [ Attr.class "list-group-item clearfix vote-item col-xs-6 col-sm-4" ]
+            [ H.text vote.name
             , H.span 
                 [ Attr.class "pull-right" ]
                 [ H.button
-                    [ (if (hasVotedForThis || (not hasVoted)) then
-                         Attr.class "btn btn-primary"
-                       else
-                         Attr.class "btn btn-primary disabled"
+                    [ (if hasVotedForThis then
+                         Attr.class "btn btn-primary voted"
+                       else 
+                         if not (hasVoted || model.isLocked) then
+                           Attr.class "btn btn-primary"
+                         else
+                           Attr.class "btn btn-primary disabled"
                       )
                     , Attr.type' "button"
                     , Events.onClick (VoteForOption vote.id) 
@@ -276,12 +290,15 @@ listElem model vote =
             ]
     else
       H.li
-         [ Attr.class "list-group-item vote-item" ]
+         [ Attr.class "list-group-item vote-item col-xs-6 col-sm-4" ]
          [ H.button 
-             [ (if (hasVotedForThis || (not hasVoted)) then
-                  Attr.class "btn btn-primary-outline"
-                else
-                  Attr.class "btn btn-primary-outline disabled"
+             [ (if hasVotedForThis then
+                  Attr.class "btn btn-primary-outline voted"
+                else 
+                  if not (hasVoted || model.isLocked) then
+                    Attr.class "btn btn-primary-outline"
+                  else
+                    Attr.class "btn btn-primary-outline disabled"
                )
              , Attr.type' "button"
              , Events.onClick (VoteForOption vote.id) 
@@ -289,9 +306,9 @@ listElem model vote =
              [ H.img 
                  [ Attr.src wordImg
                  , Attr.alt vote.name
+                 , Attr.class "img-responsive"
                  ] []
              ]
-         , H.text (" : " ++ (toString vote.votes))
          ]
 
 
@@ -308,6 +325,20 @@ increment x = x + 1
 
 decrement x = x - 1
 --
+
+listOrder : Votes -> Votes -> Order
+listOrder a b =
+  if a.name `List.member` specialWords then
+    if b.name `List.member` specialWords then
+      compare a.name b.name
+    else
+      GT
+  else
+    if b.name `List.member` specialWords then
+      LT
+    else
+      compare a.name b.name
+
 
 --decoders for JSON data
 

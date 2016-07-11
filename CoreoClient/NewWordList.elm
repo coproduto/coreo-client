@@ -32,13 +32,15 @@ import Phoenix.Push
 
 import Debug
 
-{- TODO: Connect to server -}
+strMax : Int
+strMax = 30
 
 {-| Underlying data for the NewWordList-} 
 type alias Model = 
   { votes : List NewWordVotes
   , fieldContent : String 
   , url : String
+--, visible : Bool
 {-  , socket : Phoenix.Socket.Socket Msg
   , socketUrl : String-}
   }
@@ -91,6 +93,7 @@ init url {-socketUrl-} =
       { votes = []
       , fieldContent = ""
       , url = url
+--    , visible = False
 {-      , socket = socket
       , socketUrl = socketUrl-}
       }
@@ -114,7 +117,7 @@ update message model =
       )
 
     ResetFetchList ->
-      ( model
+      ( { model | votes = List.map (\x -> { x | voted = False }) model.votes }
       , Task.perform UpdateListFail UpdateListSucceed 
           (Http.get (decodeNewWordList []) model.url)
       )
@@ -184,7 +187,10 @@ update message model =
       )
 
     NewContent str ->
-      ({ model | fieldContent = str }, Cmd.none)
+      if String.length str <= strMax then
+        ({ model | fieldContent = str }, Cmd.none)
+      else
+        ( model, Cmd.none )
 
     UpdateListFail err ->
       (Debug.log ("got err " ++ (toString err)) model
@@ -254,17 +260,27 @@ update message model =
 view : Model -> Html Msg
 view model =
   H.div []
-   [ voteList model.votes 
-   , H.input 
-       [ Attr.placeholder "Crie uma opção"
-       , Events.onInput NewContent
-       , Attr.value model.fieldContent
-       ] []
-   , H.button 
-      [ Attr.type' "button"
-      , Events.onClick (CreateOption model.fieldContent) 
-      ]
-      [ H.text "Confirmar opção" ]
+   [ H.div 
+       [ Attr.class "center-block" ]
+       [ H.form
+           [ Attr.class "form-inline" ]
+           [ H.div 
+               [ Attr.class "form-group" ]
+               [ H.input 
+                   [ Attr.placeholder "Crie uma opção"
+                   , Events.onInput NewContent
+                   , Attr.value model.fieldContent
+                   ] []
+               , H.button 
+                   [ Attr.type' "button"
+                   , Attr.class "btn btn-secondary"
+                   , Events.onClick (CreateOption model.fieldContent) 
+                   ]
+                   [ H.text "Confirmar opção" ]
+               ]
+           ]
+       ]
+   , voteList model.votes 
    ]
 
 subscriptions : Model -> Sub Msg
@@ -307,7 +323,7 @@ voteList : List NewWordVotes -> Html Msg
 voteList nvList =
   let list = List.map listElem nvList
   in H.ul 
-       [ Attr.class "list-group vote-list" ]
+       [ Attr.class "list-group row vote-list" ]
        list
 
 listElem : NewWordVotes -> Html Msg
@@ -316,7 +332,7 @@ listElem vote =
                  else "0"
   in 
     H.li 
-       [ Attr.class "list-group-item clearfix vote-item" ]
+       [ Attr.class "list-group-item clearfix vote-item col-xs-6" ]
        [ H.text (vote.name ++ ":" ++ voteText)
        , H.span
           [ Attr.class "pull-right" ]
